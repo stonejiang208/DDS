@@ -64,6 +64,17 @@ private:
 
   RcHandle<RtpsUdpInst> config_i_;
 
+  //protects access to link_ for duration of make_datalink
+  typedef ACE_Thread_Mutex         ThreadLockType;
+  typedef ACE_Guard<ThreadLockType>     GuardThreadType;
+  ThreadLockType links_lock_;
+
+  /// This protects the connections_ and the pending_connections_
+  /// data members.
+  typedef ACE_SYNCH_MUTEX     LockType;
+  typedef ACE_Guard<LockType> GuardType;
+  LockType connections_lock_;
+
   /// RTPS uses only one link per transport.
   /// This link can be safely reused by any clients that belong to the same
   /// domain participant (same GUID prefix).  Use by a second participant

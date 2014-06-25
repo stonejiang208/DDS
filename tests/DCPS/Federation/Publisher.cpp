@@ -178,8 +178,13 @@ Publisher::~Publisher()
     ACE_DEBUG((LM_DEBUG, ACE_TEXT("(%P|%t) INFO: finalizing the publisher.\n")));
   }
 
+  dataWriter_ = NULL;
+  publisher_ = NULL;
+  topic_ = NULL;
+
   // Release the participant
   if( 0 == CORBA::is_nil( this->participant_.in())) {
+    DDS::DomainParticipantFactory_var dpf = TheParticipantFactory;
     if( ::DDS::RETCODE_PRECONDITION_NOT_MET
          == this->participant_->delete_contained_entities()
       ) {
@@ -188,7 +193,7 @@ Publisher::~Publisher()
       ));
 
     } else if( ::DDS::RETCODE_PRECONDITION_NOT_MET
-               == TheParticipantFactory->delete_participant( this->participant_.in())
+               == dpf->delete_participant( this->participant_.in())
              ) {
       ACE_ERROR ((LM_ERROR,
         ACE_TEXT("(%P|%t) ERROR: Unable to release the participant.\n")

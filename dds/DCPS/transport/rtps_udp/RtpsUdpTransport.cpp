@@ -72,8 +72,9 @@ RtpsUdpTransport::make_datalink(const GuidPrefix_t& local_prefix)
 TransportImpl::AcceptConnectResult
 RtpsUdpTransport::connect_datalink(const RemoteTransport& remote,
                                    const ConnectionAttribs& attribs,
-                                   TransportClient* client)
+                                   TransportClient* client )
 {
+  GuardThreadType guard_links(this->links_lock_);
   RtpsUdpDataLink_rch link = link_;
   if (link_.is_nil()) {
     link = make_datalink(attribs.local_id_.guidPrefix);
@@ -86,6 +87,34 @@ RtpsUdpTransport::connect_datalink(const RemoteTransport& remote,
                attribs.local_reliable_, remote.reliable_,
                attribs.local_durable_, remote.durable_);
 
+  if (0 == std::memcmp(attribs.local_id_.guidPrefix, remote.repo_id_.guidPrefix,
+                       sizeof(GuidPrefix_t))) {
+    return AcceptConnectResult(link._retn()); // "loopback" connection return link right away
+  }
+
+  if (link->check_handshake_complete(attribs.local_id_, remote.repo_id_)){
+    return AcceptConnectResult(link._retn());
+  }
+
+  //### Debug statements to track where associate is failing
+  ACE_DEBUG((LM_DEBUG, "(%P|%t|%T) ###RtpsUdpTransport::connect_datalink ABOUT TO ADD_ON_START_CALLBACK\n"));
+
+  if (!link->add_on_start_callback(client, remote.repo_id_)) {
+     // link was started by the reactor thread before we could add a callback
+     //### Debug statements to track where associate is failing
+     ACE_DEBUG((LM_DEBUG, "(%P|%t|%T) ###RtpsUdpTransport::connect_datalink COULDN'T ADD_ON_START_CALLBACK B/C REACTOR THREAD STARTED LINK ALREADY\n"));
+
+     VDBG_LVL((LM_DEBUG, "(%P|%t) RtpsUdpTransport::connect_datalink got link.\n"), 2);
+     return AcceptConnectResult(link._retn());
+  }
+
+  //### Debug statements to track where associate is failing
+  ACE_DEBUG((LM_DEBUG, "(%P|%t|%T) ###RtpsUdpTransport::connect_datalink ADD_ON_START_CALLBACK SUCCESSFUL CONNECT_DATALINK PENDING\n"));
+  GuardType guard(connections_lock_);
+  add_pending_connection(client, link.in());
+  VDBG_LVL((LM_DEBUG, "(%P|%t) RtpsUdpTransport::connect_datalink pending.\n"), 2);
+  return AcceptConnectResult(AcceptConnectResult::ACR_SUCCESS);
+/*
   const GuidConverter local_conv(attribs.local_id_), remote_conv(remote.repo_id_);
   VDBG_LVL((LM_DEBUG, "(%P|%t) RtpsUdpTransport::connect_datalink_i "
     "waiting for handshake local %C remote %C\n", std::string(local_conv).c_str(),
@@ -100,14 +129,18 @@ RtpsUdpTransport::connect_datalink(const RemoteTransport& remote,
   }
   VDBG_LVL((LM_DEBUG, "(%P|%t) RtpsUdpTransport::connect_datalink_i "
     "wait for handshake completed\n"), 2);
+
+
   return AcceptConnectResult(link._retn());
+*/
 }
 
 TransportImpl::AcceptConnectResult
 RtpsUdpTransport::accept_datalink(const RemoteTransport& remote,
                                   const ConnectionAttribs& attribs,
-                                  TransportClient* client)
+                                  TransportClient* )
 {
+  GuardThreadType guard_links(this->links_lock_);
   RtpsUdpDataLink_rch link = link_;
   if (link_.is_nil()) {
     link = make_datalink(attribs.local_id_.guidPrefix);
@@ -127,6 +160,31 @@ RtpsUdpTransport::stop_accepting_or_connecting(TransportClient* client,
                                                const RepoId& remote_id)
 {
   //TODO: implement
+  //### Debug statements to track where associate is failing
+  ACE_DEBUG((LM_DEBUG, "(%P|%t|%T) ###RtpsUdpTransport::stop_accepting_or_connecting --> enter\n"));
+  //### Debug statements to track where connection is failing
+  GuidConverter remote_converted(remote_id);
+  ACE_DEBUG((LM_DEBUG, "(%P|%t|%T) ###RtpsUdpTransport::stop_accepting_or_connecting --> enter to stop TransportClient connecting to Remote: %C\n", std::string(remote_converted).c_str() ));
+  //### Debug statements to track where connection is failing
+  ACE_DEBUG((LM_DEBUG, "(%P|%t|%T) ###RtpsUdpTransport::stop_accepting_or_connecting --> trying to LOCK connections_lock_\n"));
+  GuardType guard(connections_lock_);
+  //### Debug statements to track where connection is failing
+  ACE_DEBUG((LM_DEBUG, "(%P|%t|%T) ###RtpsUdpTransport::stop_accepting_or_connecting --> LOCKED connections_lock_\n"));
+  typedef std::multimap<TransportClient*, DataLink_rch>::iterator iter_t;
+  const std::pair<iter_t, iter_t> range =
+        pending_connections_.equal_range(client);
+  for (iter_t iter = range.first; iter != range.second; ++iter) {
+     //### Debug statements
+     GuidConverter remote_rosc(remote_id);
+     ACE_DEBUG((LM_DEBUG, "(%P|%t|%T) ###RtpsUdpTransport::stop_accepting_or_connecting --> about to remove_on_start_callback for client connecting to Remote: %C\n", std::string(remote_rosc).c_str() ));
+     iter->second->remove_on_start_callback(client, remote_id);
+  }
+  pending_connections_.erase(range.first, range.second);
+  //### Debug statements to track where connection is failing
+  ACE_DEBUG((LM_DEBUG, "(%P|%t|%T) ###RtpsUdpTransport::stop_accepting_or_connecting --> RELEASING connections_lock_\n"));
+  //### Debug statements to track where connection is failing
+  ACE_DEBUG((LM_DEBUG, "(%P|%t|%T) ###RtpsUdpTransport::stop_accepting_or_connecting --> exit\n"));
+
 }
 
 void

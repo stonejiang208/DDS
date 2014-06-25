@@ -12,10 +12,19 @@ import org.omg.CORBA.StringSeqHolder;
 import Messenger.*;
 
 public class TestSubscriber {
-
-    private static final int N_EXPECTED = 10;
+    public static boolean checkReliable(String[] args) {
+      for (int i = 0; i < args.length; ++i) {
+        if (args[i].equals("-r")) {
+          return true;
+        }
+      }
+      return false;
+    }
 
     public static void main(String[] args) throws Exception {
+
+        System.out.println("Start Subscriber");
+        boolean reliable = checkReliable(args);
 
         DomainParticipantFactory dpf =
             TheParticipantFactory.WithArgs(new StringSeqHolder(args));
@@ -54,9 +63,45 @@ public class TestSubscriber {
 
         // Use the default transport (do nothing)
 
+        DataReaderQos dr_qos = new DataReaderQos();
+        dr_qos.durability = new DurabilityQosPolicy();
+        dr_qos.durability.kind = DurabilityQosPolicyKind.from_int(0);
+        dr_qos.deadline = new DeadlineQosPolicy();
+        dr_qos.deadline.period = new Duration_t();
+        dr_qos.latency_budget = new LatencyBudgetQosPolicy();
+        dr_qos.latency_budget.duration = new Duration_t();
+        dr_qos.liveliness = new LivelinessQosPolicy();
+        dr_qos.liveliness.kind = LivelinessQosPolicyKind.from_int(0);
+        dr_qos.liveliness.lease_duration = new Duration_t();
+        dr_qos.reliability = new ReliabilityQosPolicy();
+        dr_qos.reliability.kind = ReliabilityQosPolicyKind.from_int(0);
+        dr_qos.reliability.max_blocking_time = new Duration_t();
+        dr_qos.destination_order = new DestinationOrderQosPolicy();
+        dr_qos.destination_order.kind = DestinationOrderQosPolicyKind.from_int(0);
+        dr_qos.history = new HistoryQosPolicy();
+        dr_qos.history.kind = HistoryQosPolicyKind.from_int(0);
+        dr_qos.resource_limits = new ResourceLimitsQosPolicy();
+        dr_qos.user_data = new UserDataQosPolicy();
+        dr_qos.user_data.value = new byte[0];
+        dr_qos.ownership = new OwnershipQosPolicy();
+        dr_qos.ownership.kind = OwnershipQosPolicyKind.from_int(0);
+        dr_qos.time_based_filter = new TimeBasedFilterQosPolicy();
+        dr_qos.time_based_filter.minimum_separation = new Duration_t();
+        dr_qos.reader_data_lifecycle = new ReaderDataLifecycleQosPolicy();
+        dr_qos.reader_data_lifecycle.autopurge_nowriter_samples_delay = new Duration_t();
+        dr_qos.reader_data_lifecycle.autopurge_disposed_samples_delay = new Duration_t();
+
+        DataReaderQosHolder qosh = new DataReaderQosHolder(dr_qos);
+        sub.get_default_datareader_qos(qosh);
+        if (reliable) {
+          qosh.value.reliability.kind =
+            ReliabilityQosPolicyKind.RELIABLE_RELIABILITY_QOS;
+        }
+        qosh.value.history.kind = HistoryQosPolicyKind.KEEP_ALL_HISTORY_QOS;
+
         DataReaderListenerImpl listener = new DataReaderListenerImpl();
         DataReader dr = sub.create_datareader(top,
-                                              DATAREADER_QOS_DEFAULT.get(),
+                                              qosh.value,
                                               listener,
                                               DEFAULT_STATUS_MASK.value);
         if (dr == null) {
@@ -73,6 +118,7 @@ public class TestSubscriber {
         Duration_t timeout = new Duration_t(DURATION_INFINITE_SEC.value,
                                             DURATION_INFINITE_NSEC.value);
 
+        boolean matched_pub = false;
         while (true) {
             final int result = dr.get_subscription_matched_status(matched);
             if (result != RETCODE_OK.value) {
@@ -83,7 +129,13 @@ public class TestSubscriber {
 
             if (matched.value.current_count == 0
                 && matched.value.total_count > 0) {
+                System.out.println("Subscriber No Longer Matched");
                 break;
+            }
+            else if (matched.value.current_count > 0 &&
+                     !matched_pub) {
+                System.out.println("Subscriber Matched");
+                matched_pub = true;
             }
 
             ConditionSeqHolder cond = new ConditionSeqHolder(new Condition[]{});
@@ -93,10 +145,17 @@ public class TestSubscriber {
             }
         }
 
+        System.out.println("Subscriber Report Validity");
+        listener.report_validity();
+
         ws.detach_condition(sc);
+
+        System.out.println("Stop Subscriber");
 
         dp.delete_contained_entities();
         dpf.delete_participant(dp);
         TheServiceParticipant.shutdown();
+
+        System.out.println("Subscriber exiting");
     }
 }

@@ -75,6 +75,7 @@ Writer::write()
     // Block until Subscriber is available
     wait_for_match(writer1_);
     wait_for_match(writer2_);
+    ACE_DEBUG((LM_DEBUG, ACE_TEXT("(%P|%t) Writers matched\n")));
 
     // Write samples
     Messenger::MessageDataWriter_var message_dw1
@@ -100,14 +101,14 @@ Writer::write()
     pid << std::setw(5) << ACE_OS::getpid();
 
     Messenger::Message message1;
-    message1.subject_id = 1;
+    message1.writer_id  = 1;
     message1.from       = "Comic Book Guy 1";
-    message1.subject    = pid.str().c_str();
+    message1.process_id = pid.str().c_str();
     message1.text       = "Worst. Movie. Ever.";
-    message1.count      = 0;
+    message1.sample_id  = 0;
 
     Messenger::Message message2 = message1;
-    message2.subject_id = 2;
+    message2.writer_id  = 2;
     message2.from       = "Comic Book Guy 2";
 
     message1.data.length(66 * 1000); // requires 2 fragments for udp/mcast
@@ -123,6 +124,13 @@ Writer::write()
     for (int i = 0; i < num_messages; i++) {
       ACE_OS::sleep(1);
 
+      ACE_DEBUG((LM_DEBUG,
+                 ACE_TEXT("(%P|%t)%N:%l: Sending Message: process_id = %C ")
+                 ACE_TEXT("writer_id = %d ")
+                 ACE_TEXT("sample_id = %d\n"),
+                 message1.process_id.in(),
+                 message1.writer_id,
+                 message1.sample_id));
       DDS::ReturnCode_t error = message_dw1->write(message1, handle1);
 
       if (error != DDS::RETCODE_OK) {
@@ -137,6 +145,13 @@ Writer::write()
 
       ACE_OS::sleep(1);
 
+      ACE_DEBUG((LM_DEBUG,
+                 ACE_TEXT("(%P|%t)%N:%l: Sending Message: process_id = %C ")
+                 ACE_TEXT("writer_id = %d ")
+                 ACE_TEXT("sample_id = %d\n"),
+                 message2.process_id.in(),
+                 message2.writer_id,
+                 message2.sample_id));
       error = message_dw2->write(message2, handle2);
 
       if (error != DDS::RETCODE_OK) {
@@ -149,8 +164,8 @@ Writer::write()
         }
       }
 
-      ++message1.count;
-      ++message2.count;
+      ++message1.sample_id;
+      ++message2.sample_id;
     }
 
     // Let readers disconnect first, once they either get the data or

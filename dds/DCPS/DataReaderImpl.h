@@ -604,6 +604,9 @@ private:
     return data.publication_transport_priority_;
   }
 
+  // when done handling historic samples, resume
+  void resume_sample_processing(const PublicationId& pub_id);
+
   friend class InstanceState;
 
   friend class ::DDS_TEST; //allows tests to get at private data
@@ -618,6 +621,7 @@ private:
   CORBA::Long                  depth_;
   size_t                       n_chunks_;
 
+  //Used to protect access to id_to_handle_map_
   ACE_Recursive_Thread_Mutex   publication_handle_lock_;
 
   typedef std::map<RepoId, DDS::InstanceHandle_t, GUID_tKeyLessThan> RepoIdToHandleMap;

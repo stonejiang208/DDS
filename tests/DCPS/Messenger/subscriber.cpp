@@ -30,16 +30,13 @@
 #include "MessengerTypeSupportImpl.h"
 #include "Args.h"
 
-bool
-make_dr_reliable()
-{
-  OpenDDS::DCPS::TransportConfig_rch gc = TheTransportRegistry->global_config();
-  return gc->instances_[0]->name() == "the_rtps_transport";
-}
+bool reliable = false;
+bool wait_for_acks = false;
 
 int
 ACE_TMAIN(int argc, ACE_TCHAR *argv[])
 {
+  int status = 0;
   try {
     // Initialize DomainParticipantFactory
     DDS::DomainParticipantFactory_var dpf =
@@ -101,11 +98,13 @@ ACE_TMAIN(int argc, ACE_TCHAR *argv[])
     }
 
     // Create DataReader
-    DDS::DataReaderListener_var listener(new DataReaderListenerImpl);
+    DataReaderListenerImpl* const listener_servant = new DataReaderListenerImpl;
+    DDS::DataReaderListener_var listener(listener_servant);
 
     DDS::DataReaderQos dr_qos;
     sub->get_default_datareader_qos(dr_qos);
-    if (make_dr_reliable()) {
+    if (DataReaderListenerImpl::is_reliable()) {
+      std::cout << "Reliable DataReader" << std::endl;
       dr_qos.reliability.kind = DDS::RELIABLE_RELIABILITY_QOS;
     }
 
@@ -150,17 +149,19 @@ ACE_TMAIN(int argc, ACE_TCHAR *argv[])
       }
     }
 
+    status = listener_servant->is_valid() ? 0 : -1;
+
     ws->detach_condition(condition);
 
     // Clean-up!
     participant->delete_contained_entities();
     dpf->delete_participant(participant.in());
+    TheServiceParticipant->shutdown();
 
   } catch (const CORBA::Exception& e) {
     e._tao_print_exception("Exception caught in main():");
-    return -1;
+    status = -1;
   }
 
-  TheServiceParticipant->shutdown();
-  return 0;
+  return status;
 }

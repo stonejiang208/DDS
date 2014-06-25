@@ -20,6 +20,7 @@
 
 DataReaderListenerImpl::DataReaderListenerImpl()
   : num_samples_(0)
+  , valid_(true)
 {
 }
 
@@ -57,20 +58,57 @@ throw(CORBA::SystemException)
         const DDS::SampleInfo& si = info[i];
         if (si.valid_data) {
           const Messenger::Message& message = messages[i];
-          ++num_samples_;
+          // only sample_id unique entries
+          if (process_writers_[message.process_id.in()][message.writer_id].insert(message.sample_id).second) {
+            ++num_samples_;
+          }
+          else {
+            std::cout << "ERROR: duplicate ";
+            valid_ = false;
+          }
 
-          std::cout << "Message: subject = " << message.subject.in()
-                    << " subject_id = " << message.subject_id
-                    << " count = " << message.count << '\n';
+          // output for console to consume
+          std::cout << "Message: process_id = " << message.process_id.in()
+                    << " writer_id = " << message.writer_id
+                    << " sample_id = " << message.sample_id << '\n';
+          // also track it in the log file
+          ACE_DEBUG((LM_DEBUG,
+                     ACE_TEXT("%N:%l: Message: process_id = %C ")
+                     ACE_TEXT("writer_id = %d ")
+                     ACE_TEXT("sample_id = %d\n"),
+                     message.process_id.in(),
+                     message.writer_id,
+                     message.sample_id));
 
-          for (CORBA::ULong i = 0; i < message.data.length(); ++i) {
-            if ((message.subject_id == 1 &&
-                 (message.data[i] != i % 256)) ||
-                (message.subject_id == 2 &&
-                 (message.data[i] != 255 - (i % 256)))) {
-              std::cout << "ERROR: Bad data at index " << i << " subjid "
-                        << message.subject_id << " count " << message.count
+          if ((message.writer_id == 1 && std::string(message.from) != "Comic Book Guy 1") ||
+              (message.writer_id == 2 && std::string(message.from) != "Comic Book Guy 2")) {
+            std::cout << "ERROR: Bad from for process_id " << message.process_id.in() << " writer_id "
+                      << message.writer_id << " sample_id " << message.sample_id
+                      << " (" << message.from.in() << ")\n";
+            valid_ = false;
+          }
+          else if (message.writer_id != 1 && message.writer_id != 2) {
+            std::cout << "ERROR: Bad writer_id for process_id " << message.process_id.in()
+                      << " writer_id " << message.writer_id << " sample_id "
+                      << message.sample_id << " (" << message.from.in() << ")\n";
+            valid_ = false;
+          }
+
+          const unsigned int data_size = 66 * 1000;
+          if (message.data.length() != data_size) {
+            std::cout << "ERROR: Expected message.data to have a size of " << data_size
+                      << " but it is " << message.data.length() << "\n";
+            valid_ = false;
+          }
+          for (CORBA::ULong j = 0; j < message.data.length(); ++j) {
+            if ((message.writer_id == 1 &&
+                 (message.data[j] != j % 256)) ||
+                (message.writer_id == 2 &&
+                 (message.data[j] != 255 - (j % 256)))) {
+              std::cout << "ERROR: Bad data at index " << j << " writer_id "
+                        << message.writer_id << " sample_id " << message.sample_id
                         << "\n";
+              valid_ = false;
               break;
             }
           }
@@ -85,6 +123,7 @@ throw(CORBA::SystemException)
                      ACE_TEXT("%N:%l: on_data_available()")
                      ACE_TEXT(" ERROR: unknown instance state: %d\n"),
                      si.instance_state));
+          valid_ = false;
         }
       }
     } else {
@@ -92,6 +131,7 @@ throw(CORBA::SystemException)
                  ACE_TEXT("%N:%l: on_data_available()")
                  ACE_TEXT(" ERROR: unexpected status: %d\n"),
                  error));
+      valid_ = false;
     }
 
   } catch (const CORBA::Exception& e) {
@@ -118,10 +158,11 @@ throw(CORBA::SystemException)
 
 void DataReaderListenerImpl::on_liveliness_changed(
   DDS::DataReader_ptr,
-  const DDS::LivelinessChangedStatus &)
+  const DDS::LivelinessChangedStatus& status)
 throw(CORBA::SystemException)
 {
-  ACE_DEBUG((LM_DEBUG, ACE_TEXT("%N:%l: INFO: on_liveliness_changed()\n")));
+  ACE_DEBUG((LM_DEBUG, ACE_TEXT("%N:%l: INFO: on_liveliness_changed() alive=%d, not alive=%d\n"),
+             status.alive_count, status.not_alive_count));
 }
 
 void DataReaderListenerImpl::on_subscription_matched(
@@ -146,4 +187,39 @@ void DataReaderListenerImpl::on_sample_lost(
 throw(CORBA::SystemException)
 {
   ACE_DEBUG((LM_DEBUG, ACE_TEXT("%N:%l: INFO: on_sample_lost()\n")));
+}
+
+bool DataReaderListenerImpl::data_consistent() const
+{
+  bool valid_and_done = valid_;
+  if (process_writers_.size() != NUM_PROCESSES) {
+    std::cout << "ERROR: expect to receive data from " << NUM_PROCESSES
+              << " processes but instead received from "
+              << process_writers_.size() << std::endl;
+    valid_and_done = false;
+  }
+  for (ProcessWriters::const_iterator process = process_writers_.begin();
+       process !=  process_writers_.end();
+       ++process) {
+    if (process->second.size() != NUM_WRITERS_PER_PROCESS) {
+      std::cout << "ERROR: expect to receive from " << NUM_WRITERS_PER_PROCESS
+                << " writers from process " << process->first
+                << " but instead received from "
+                << process->second.size() << std::endl;
+      valid_and_done = false;
+    }
+    for (WriterCounts::const_iterator writer = process->second.begin();
+         writer != process->second.end();
+         ++writer) {
+      if (writer->second.size() > NUM_SAMPLES_PER_WRITER) {
+        std::cout << "ERROR: expect to receive no more than " << NUM_SAMPLES_PER_WRITER
+                  << " samples from process=" << process->first
+                  << " writer=" << writer->first
+                  << " but instead received "
+                  << writer->second.size() << std::endl;
+        valid_and_done = false;
+      }
+    }
+  }
+  return valid_and_done;
 }

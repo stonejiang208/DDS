@@ -100,7 +100,8 @@ public:
                   bool local_reliable, bool remote_reliable,
                   bool local_durable, bool remote_durable);
 
-  bool wait_for_handshake(const RepoId& local_id, const RepoId& remote_id);
+  bool check_handshake_complete(const RepoId& local, const RepoId& remote);
+  //bool wait_for_handshake(const RepoId& local_id, const RepoId& remote_id);
 
 private:
   virtual void stop_i();
@@ -247,6 +248,12 @@ private:
   size_t generate_nack_frags(std::vector<RTPS::NackFragSubmessage>& nack_frags,
                              WriterInfo& wi, const RepoId& pub_id);
 
+  /// Extend the FragmentNumberSet to cover the fragments that are
+  /// missing from our last known fragment to the extent
+  /// @param fnSet FragmentNumberSet for the message sequence number
+  /// in question
+  /// @param extent is the highest fragement sequence number for this
+  /// FragmentNumberSet
   static void extend_bitmap_range(RTPS::FragmentNumberSet& fnSet,
                                   CORBA::ULong extent);
 

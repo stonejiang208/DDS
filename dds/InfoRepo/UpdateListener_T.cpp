@@ -7,6 +7,7 @@
  */
 
 #include "UpdateListener_T.h"
+#include "FederatorConfig.h"
 #include "dds/DCPS/debug.h"
 
 namespace OpenDDS {
@@ -14,7 +15,8 @@ namespace Federator {
 
 template<class DataType, class ReaderType>
 UpdateListener<DataType, ReaderType>::UpdateListener(UpdateProcessor<DataType>& processor)
-  : federationId_(NIL_REPOSITORY), receiver_(processor)
+  : federationId_(NIL_REPOSITORY),
+    receiver_(processor)
 {
   if (OpenDDS::DCPS::DCPS_debug_level > 0) {
     ACE_DEBUG((LM_DEBUG,
@@ -32,14 +34,14 @@ UpdateListener<DataType, ReaderType>::~UpdateListener()
 }
 
 template<class DataType, class ReaderType>
-RepoKey&
-UpdateListener<DataType, ReaderType>::federationId()
+void
+UpdateListener<DataType, ReaderType>::federationId(const TAO_DDS_DCPSFederationId& id)
 {
-  return this->federationId_;
+  this->federationId_ = id;
 }
 
 template<class DataType, class ReaderType>
-RepoKey
+const TAO_DDS_DCPSFederationId&
 UpdateListener<DataType, ReaderType>::federationId() const
 {
   return this->federationId_;
@@ -73,8 +75,8 @@ UpdateListener<DataType, ReaderType>::on_data_available(
 
       if (status == DDS::RETCODE_OK) {
         // Check if we should process the sample.
-        if ((this->federationId() != NIL_REPOSITORY)
-            && (this->federationId() != sample->sender)) {
+        if (this->federationId_.overridden() &&
+            this->federationId_.id() != sample->sender) {
 
           // Delegate processing to the federation manager.
           this->receiver_.add(sample, info);

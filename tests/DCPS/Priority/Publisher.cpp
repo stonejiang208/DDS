@@ -33,7 +33,8 @@ Publisher::~Publisher()
 
   if( ! CORBA::is_nil( this->participant_.in())) {
     this->participant_->delete_contained_entities();
-    TheParticipantFactory->delete_participant( this->participant_.in());
+    DDS::DomainParticipantFactory_var dpf = TheParticipantFactory;
+    dpf->delete_participant( this->participant_.in());
   }
   TheServiceParticipant->shutdown();
 }
@@ -42,9 +43,10 @@ Publisher::Publisher( const Options& options)
  : options_( options),
    waiter_( new DDS::WaitSet)
 {
+  DDS::DomainParticipantFactory_var dpf = TheParticipantFactory;
   // Create the DomainParticipant
   this->participant_
-    = TheParticipantFactory->create_participant(
+    = dpf->create_participant(
         this->options_.domain(),
         PARTICIPANT_QOS_DEFAULT,
         DDS::DomainParticipantListener::_nil(),
@@ -121,22 +123,28 @@ Publisher::Publisher( const Options& options)
     ));
     throw BadPublisherException();
 
-  } else if( this->options_.verbose()) {
-    ACE_DEBUG((LM_DEBUG,
-      ACE_TEXT("(%P|%t) Publisher::Publisher() - ")
-      ACE_TEXT("created publisher.\n")
-    ));
   }
+
+  ACE_DEBUG((LM_DEBUG,
+    ACE_TEXT("(%P|%t) Publisher::Publisher() - ")
+    ACE_TEXT("created publisher.\n")
+  ));
 
   // Writer Qos policy values.
   ::DDS::DataWriterQos writerQos;
   this->publisher_->get_default_datawriter_qos( writerQos);
 
-  writerQos.durability.kind                          = ::DDS::TRANSIENT_LOCAL_DURABILITY_QOS;
+//  writerQos.durability.kind                          = ::DDS::TRANSIENT_LOCAL_DURABILITY_QOS;
   writerQos.history.kind                             = ::DDS::KEEP_ALL_HISTORY_QOS;
-  writerQos.resource_limits.max_samples_per_instance = ::DDS::LENGTH_UNLIMITED;
+  // this number is set to have a big enough queue of data to see that the higher priority
+  // message is on its own queue, if tests start failing, then this number should be increased
+  // or possibly sample0.baggage length increased
+  writerQos.resource_limits.max_samples_per_instance = 100;
+  writerQos.resource_limits.max_samples = 100;
 
   // Reliability varies with the transport implementation.
+  writerQos.reliability.max_blocking_time.sec = 1;
+  writerQos.reliability.max_blocking_time.nanosec = 0;
   switch( this->options_.transportType()) {
     case Options::TCP:
     case Options::MC:
@@ -170,24 +178,28 @@ Publisher::Publisher( const Options& options)
     ));
     throw BadWriterException();
 
-  } else if( this->options_.verbose()) {
-    ACE_DEBUG((LM_DEBUG,
-      ACE_TEXT("(%P|%t) Publisher::Publisher() - ")
-      ACE_TEXT("created writer[0].\n")
-    ));
   }
+
+  ACE_DEBUG((LM_DEBUG,
+    ACE_TEXT("(%P|%t) Publisher::Publisher() - ")
+    ACE_TEXT("created writer[0].\n")
+  ));
 
   // Grab, enable and attach the status condition for test synchronization.
   this->status_[0] = this->writer_[0]->get_statuscondition();
   this->status_[0]->set_enabled_statuses( DDS::PUBLICATION_MATCHED_STATUS);
-  this->waiter_->attach_condition( this->status_[0].in());
-
-  if( this->options_.verbose()) {
-    ACE_DEBUG((LM_DEBUG,
-      ACE_TEXT("(%P|%t) Publisher::Publisher() - ")
-      ACE_TEXT("created StatusCondition[0] for test synchronization.\n")
+  if (this->waiter_->attach_condition( this->status_[0].in()) != DDS::RETCODE_OK) {
+    ACE_ERROR((LM_ERROR,
+      ACE_TEXT("(%P|%t) ERROR: Publisher::Publisher() - ")
+      ACE_TEXT("failed to match publication.\n")
     ));
+    throw BadAttachException();
   }
+
+  ACE_DEBUG((LM_DEBUG,
+    ACE_TEXT("(%P|%t) Publisher::Publisher() - ")
+    ACE_TEXT("created StatusCondition[0] for test synchronization.\n")
+  ));
 
   // Actually set the priority finally.
   writerQos.transport_priority.value = this->options_.priority();
@@ -206,24 +218,28 @@ Publisher::Publisher( const Options& options)
     ));
     throw BadWriterException();
 
-  } else if( this->options_.verbose()) {
-    ACE_DEBUG((LM_DEBUG,
-      ACE_TEXT("(%P|%t) Publisher::Publisher() - ")
-      ACE_TEXT("created writer[1].\n")
-    ));
   }
+
+  ACE_DEBUG((LM_DEBUG,
+    ACE_TEXT("(%P|%t) Publisher::Publisher() - ")
+    ACE_TEXT("created writer[1].\n")
+  ));
 
   // Grab, enable and attach the status condition for test synchronization.
   this->status_[1] = this->writer_[1]->get_statuscondition();
   this->status_[1]->set_enabled_statuses( DDS::PUBLICATION_MATCHED_STATUS);
-  this->waiter_->attach_condition( this->status_[1].in());
-
-  if( this->options_.verbose()) {
-    ACE_DEBUG((LM_DEBUG,
-      ACE_TEXT("(%P|%t) Publisher::Publisher() - ")
-      ACE_TEXT("created StatusCondition[1] for test synchronization.\n")
+  if (this->waiter_->attach_condition( this->status_[1].in()) != DDS::RETCODE_OK) {
+    ACE_ERROR((LM_ERROR,
+      ACE_TEXT("(%P|%t) ERROR: Publisher::Publisher() - ")
+      ACE_TEXT("failed to match publication.\n")
     ));
+    throw BadAttachException();
   }
+
+  ACE_DEBUG((LM_DEBUG,
+    ACE_TEXT("(%P|%t) Publisher::Publisher() - ")
+    ACE_TEXT("created StatusCondition[1] for test synchronization.\n")
+  ));
 
 }
 
@@ -253,7 +269,8 @@ Publisher::run()
       DDS::StatusCondition_var condition
         = DDS::StatusCondition::_narrow( conditions[ index].in());
 
-      DDS::DataWriter_var writer = DDS::DataWriter::_narrow( condition->get_entity());
+      DDS::Entity_var writer_entity = condition->get_entity();
+      DDS::DataWriter_var writer = DDS::DataWriter::_narrow( writer_entity);
       if( !CORBA::is_nil( writer.in())) {
         DDS::StatusMask changes = writer->get_status_changes();
         if( changes & DDS::PUBLICATION_MATCHED_STATUS) {
@@ -279,12 +296,10 @@ Publisher::run()
   /// BuiltIn Topic publications.
   ACE_OS::sleep( 2);
 
-  if( this->options_.verbose()) {
-    ACE_DEBUG((LM_DEBUG,
-      ACE_TEXT("(%P|%t) Publisher::run() - ")
-      ACE_TEXT("starting to publish samples.\n")
-    ));
-  }
+  ACE_DEBUG((LM_DEBUG,
+    ACE_TEXT("(%P|%t) Publisher::run() - ")
+    ACE_TEXT("starting to publish samples.\n")
+  ));
 
   Test::DataDataWriter_var writer0
     = Test::DataDataWriter::_narrow( this->writer_[0].in());
@@ -292,32 +307,43 @@ Publisher::run()
     = Test::DataDataWriter::_narrow( this->writer_[1].in());
   Test::Data sample0;
   Test::Data sample1;
-  sample0.key = 24;
-  sample1.key = 42;
-  for( unsigned int count = 0; count < this->options_.count(); ++count) {
-    std::stringstream buffer0;
-    buffer0 << "This is sample " << std::dec << (1+count)
-           << " from publication 0 at default priority"
-           << std::ends;
-    sample0.value = CORBA::string_dup( buffer0.str().c_str());
-    writer0->write( sample0, DDS::HANDLE_NIL);
+  sample0.key = 1;
+  sample0.value = 0;
+  // before_value is just for the high priority sample, low priority samples are in order
+  sample0.before_value = 0;
+  sample0.priority = false;
+  // add some extra baggage to ensure
+  sample0.baggage.length(9999);
 
-    std::stringstream buffer1;
-    buffer1 << "This is sample " << std::dec << (1+count)
-           << " from publication 1 at priority "
-           << std::dec << this->options_.priority()
-           << std::ends;
-    sample1.value = CORBA::string_dup( buffer1.str().c_str());
-    writer1->write( sample1, DDS::HANDLE_NIL);
+  if (options_.multipleInstances())
+    sample1.key = 2;
+  else
+    sample1.key = 1;
+  sample1.value = 0;
+  // will determine later which value this sample should be seen before
+  sample1.before_value = 0;
+  sample1.priority = true;
+  bool sent = false;
+  for (unsigned long num_samples = 1; num_samples < (unsigned long)-1 && !sent; ++num_samples) {
+    ++sample0.value;
+    if (writer0->write( sample0, DDS::HANDLE_NIL) == DDS::RETCODE_TIMEOUT) {
+      // indicate the high priority sample should arrive before the indicated low priority sample
+      sample1.before_value = sample0.value - 1;
+      while (writer1->write( sample1, DDS::HANDLE_NIL) == DDS::RETCODE_TIMEOUT) {
+        ACE_ERROR((LM_ERROR,
+          ACE_TEXT("(%P|%t) ERROR: Publisher::run() - ")
+          ACE_TEXT("should not have backpressure for the second writer.\n")
+        ));
+      }
+      sent = true;
+    }
   }
 
-  if( this->options_.verbose()) {
-    ACE_DEBUG((LM_DEBUG,
-      ACE_TEXT("(%P|%t) Publisher::run() - ")
-      ACE_TEXT("finished publishing %d samples.\n"),
-      2 * this->options_.count()
-    ));
-  }
+  ACE_DEBUG((LM_DEBUG,
+    ACE_TEXT("(%P|%t) Publisher::run() - ")
+    ACE_TEXT("finished publishing %d samples.\n"),
+    sample0.value
+  ));
 
   // Make sure that the data has arriven.
   ::DDS::Duration_t shutdownDelay = {15, 0}; // Wait up to a total of 15

@@ -6,15 +6,17 @@
  * See: http://www.opendds.org/license.html
  */
 
+/*
 ACE_INLINE
-OpenDDS::Federator::RepoKey&
-OpenDDS::Federator::ManagerImpl::id()
+void
+OpenDDS::Federator::ManagerImpl::id(RepoKey val)
 {
-  return this->config_.federationId();
+  this->config_.federationId(val);
 }
+*/
 
 ACE_INLINE
-OpenDDS::Federator::RepoKey
+const TAO_DDS_DCPSFederationId&
 OpenDDS::Federator::ManagerImpl::id() const
 {
   return this->config_.federationId();

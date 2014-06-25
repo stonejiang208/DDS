@@ -25,7 +25,7 @@
 #include "ace/Reactor.h"
 #include "ace/OS_NS_sys_socket.h" // For setsockopt()
 
-#include <cstring>
+#include <string.h>
 
 #ifndef __ACE_INLINE__
 # include "RtpsUdpDataLink.inl"
@@ -273,6 +273,15 @@ RtpsUdpDataLink::associated(const RepoId& local_id, const RepoId& remote_id,
 }
 
 bool
+RtpsUdpDataLink::check_handshake_complete(const RepoId& local,
+                                          const RepoId& remote)
+{
+  return this->handshake_done(local, remote);
+}
+
+
+/*
+bool
 RtpsUdpDataLink::wait_for_handshake(const RepoId& local_id,
                                     const RepoId& remote_id)
 {
@@ -290,7 +299,7 @@ RtpsUdpDataLink::wait_for_handshake(const RepoId& local_id,
   }
   return true;
 }
-
+*/
 bool
 RtpsUdpDataLink::handshake_done(const RepoId& local_id, const RepoId& remote_id)
 {
@@ -1036,9 +1045,9 @@ RtpsUdpDataLink::generate_nack_frags(std::vector<RTPS::NackFragSubmessage>& nf,
   }
   for (size_t i = 0; i < frag_info.size(); ++i) {
     // If we've received a HeartbeatFrag, we know the last (available) frag #
-    const iter_t iter = wi.frags_.find(frag_info[i].first);
-    if (iter != wi.frags_.end()) {
-      extend_bitmap_range(frag_info[i].second, iter->second.value);
+    const iter_t heartbeat_frag = wi.frags_.find(frag_info[i].first);
+    if (heartbeat_frag != wi.frags_.end()) {
+      extend_bitmap_range(frag_info[i].second, heartbeat_frag->second.value);
     }
   }
 
@@ -1107,14 +1116,16 @@ RtpsUdpDataLink::extend_bitmap_range(RTPS::FragmentNumberSet& fnSet,
   if (extent < fnSet.bitmapBase.value) {
     return; // can't extend to some number under the base
   }
-  const CORBA::ULong index = std::min(CORBA::ULong(255),
-                                      extent - fnSet.bitmapBase.value),
-                     len = (index + 31) / 32;
-  if (index < fnSet.numBits) {
+  // calculate the index to the extent to determine the new_num_bits
+  const CORBA::ULong new_num_bits = std::min(CORBA::ULong(255),
+                                             extent - fnSet.bitmapBase.value + 1),
+                     len = (new_num_bits + 31) / 32;
+  if (new_num_bits < fnSet.numBits) {
     return; // bitmap already extends past "extent"
   }
   fnSet.bitmap.length(len);
-  DisjointSequence::fill_bitmap_range(fnSet.numBits, index,
+  // We are missing from one past old bitmap end to the new end
+  DisjointSequence::fill_bitmap_range(fnSet.numBits + 1, new_num_bits,
                                       fnSet.bitmap.get_buffer(), len,
                                       fnSet.numBits);
 }
@@ -1208,9 +1219,12 @@ RtpsUdpDataLink::received(const RTPS::AckNackSubmessage& acknack,
 
   ri->second.acknack_recvd_count_ = acknack.count.value;
 
+  //### broadcast on the condition shouldn't need to happen in async_assoc
+  //TODO:
   if (!ri->second.handshake_done_) {
     ri->second.handshake_done_ = true;
-    handshake_condition_.broadcast();
+    this->invoke_on_start_callbacks(true);
+    //handshake_condition_.broadcast();
   }
 
   std::map<SequenceNumber, TransportQueueElement*> pendingCallbacks;

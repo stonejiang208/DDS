@@ -35,10 +35,10 @@
 TAO_DDS_DCPSInfo_i::TAO_DDS_DCPSInfo_i(CORBA::ORB_ptr orb
                                        , bool reincarnate
                                        , ShutdownInterface* shutdown
-                                       , long federation)
+                                       , const TAO_DDS_DCPSFederationId& federation)
   : orb_(CORBA::ORB::_duplicate(orb))
   , federation_(federation)
-  , participantIdGenerator_(federation)
+  , participantIdGenerator_(federation.id())
   , um_(0)
   , reincarnate_(reincarnate)
   , shutdown_(shutdown)
@@ -270,7 +270,7 @@ TAO_DDS_DCPSInfo_i::add_topic(const OpenDDS::DCPS::RepoId& topicId,
 
   // See if we are adding a topic that was created within this
   // repository or a different repository.
-  if (converter.federationId() == federation_) {
+  if (converter.federationId() == federation_.id()) {
     // Ensure the topic RepoId values do not conflict.
     participantPtr->last_topic_key(converter.entityKey());
   }
@@ -601,7 +601,7 @@ TAO_DDS_DCPSInfo_i::add_publication(DDS::DomainId_t domainId,
 
   // See if we are adding a publication that was created within this
   // repository or a different repository.
-  if (converter.federationId() == federation_) {
+  if (converter.federationId() == federation_.id()) {
     // Ensure the publication RepoId values do not conflict.
     partPtr->last_publication_key(converter.entityKey());
   }
@@ -911,7 +911,7 @@ TAO_DDS_DCPSInfo_i::add_subscription(
 
   // See if we are adding a subscription that was created within this
   // repository or a different repository.
-  if (converter.federationId() == federation_) {
+  if (converter.federationId() == federation_.id()) {
     // Ensure the subscription RepoId values do not conflict.
     partPtr->last_subscription_key(converter.entityKey());
   }
@@ -975,7 +975,7 @@ OpenDDS::DCPS::AddDomainStatus TAO_DDS_DCPSInfo_i::add_domain_participant(
   // A value to return.
   OpenDDS::DCPS::AddDomainStatus value;
   value.id        = OpenDDS::DCPS::GUID_UNKNOWN;
-  value.federated = (this->federation_ != 0);
+  value.federated = this->federation_.overridden();
 
   ACE_GUARD_RETURN(ACE_Recursive_Thread_Mutex, guard, this->lock_, value);
 
@@ -1138,7 +1138,7 @@ TAO_DDS_DCPSInfo_i::add_domain_participant(DDS::DomainId_t domainId
 
   // See if we are adding a participant that was created within this
   // repository or a different repository.
-  if (converter.federationId() == this->federation_) {
+  if (converter.federationId() == this->federation_.id()) {
     // Ensure the participant GUID values do not conflict.
     domainPtr->last_participant_key(converter.participantId());
 
@@ -1338,6 +1338,10 @@ TAO_DDS_DCPSInfo_i::disassociate_subscription(
     throw OpenDDS::DCPS::Invalid_Participant();
   }
 
+  if (OpenDDS::DCPS::DCPS_debug_level > 3) {
+    ACE_DEBUG((LM_INFO, "(%P|%t) disassociating subscription\n"));
+  }
+
   DCPS_IR_Subscription* subscription;
   if (participant->find_subscription_reference(local_id, subscription)
       != 0 || subscription == 0) {
@@ -1367,6 +1371,10 @@ TAO_DDS_DCPSInfo_i::disassociate_publication(
   DCPS_IR_Participant* participant = it->second->participant(participantId);
   if (participant == 0) {
     throw OpenDDS::DCPS::Invalid_Participant();
+  }
+
+  if (OpenDDS::DCPS::DCPS_debug_level > 3) {
+    ACE_DEBUG((LM_INFO, "(%P|%t) disassociating publication\n"));
   }
 
   DCPS_IR_Publication* publication;
@@ -1459,6 +1467,9 @@ void TAO_DDS_DCPSInfo_i::association_complete(DDS::DomainId_t domainId,
   // since the DataReader is the passive peer)
   DCPS_IR_Subscription* sub = 0;
   DCPS_IR_Publication* pub = 0;
+  if (OpenDDS::DCPS::DCPS_debug_level > 3) {
+    ACE_DEBUG((LM_INFO, "(%P|%t) completing association\n"));
+  }
   if (0 == partPtr->find_subscription_reference(localId, sub)) {
     sub->association_complete(remoteId);
   } else if (0 == partPtr->find_publication_reference(localId, pub)) {
@@ -1601,6 +1612,10 @@ CORBA::Boolean TAO_DDS_DCPSInfo_i::update_publication_qos(
     throw OpenDDS::DCPS::Invalid_Participant();
   }
 
+  if (OpenDDS::DCPS::DCPS_debug_level > 3) {
+    ACE_DEBUG((LM_INFO, "(%P|%t) updating  publication qos 1\n"));
+  }
+
   DCPS_IR_Publication* pub;
 
   if (partPtr->find_publication_reference(dwId, pub) != 0 || pub == 0) {
@@ -1666,6 +1681,10 @@ TAO_DDS_DCPSInfo_i::update_publication_qos(
     throw OpenDDS::DCPS::Invalid_Participant();
   }
 
+  if (OpenDDS::DCPS::DCPS_debug_level > 3) {
+    ACE_DEBUG((LM_INFO, "(%P|%t) updating  publication qos 2\n"));
+  }
+
   DCPS_IR_Publication* pub;
 
   if (partPtr->find_publication_reference(dwId, pub) != 0 || pub == 0) {
@@ -1697,6 +1716,10 @@ TAO_DDS_DCPSInfo_i::update_publication_qos(
 
   if (0 == partPtr) {
     throw OpenDDS::DCPS::Invalid_Participant();
+  }
+
+  if (OpenDDS::DCPS::DCPS_debug_level > 3) {
+    ACE_DEBUG((LM_INFO, "(%P|%t) updating  publication qos 3\n"));
   }
 
   DCPS_IR_Publication* pub;
@@ -1733,6 +1756,10 @@ CORBA::Boolean TAO_DDS_DCPSInfo_i::update_subscription_qos(
   }
 
   DCPS_IR_Subscription* sub;
+
+  if (OpenDDS::DCPS::DCPS_debug_level > 3) {
+    ACE_DEBUG((LM_INFO, "(%P|%t) updating QOS for subscription 1\n"));
+  }
 
   if (partPtr->find_subscription_reference(drId, sub) != 0 || sub == 0) {
     throw OpenDDS::DCPS::Invalid_Subscription();
@@ -1799,6 +1826,10 @@ TAO_DDS_DCPSInfo_i::update_subscription_qos(
 
   DCPS_IR_Subscription* sub;
 
+  if (OpenDDS::DCPS::DCPS_debug_level > 3) {
+    ACE_DEBUG((LM_INFO, "(%P|%t) updating QOS for subscription 2\n"));
+  }
+
   if (partPtr->find_subscription_reference(drId, sub) != 0 || sub == 0) {
     throw OpenDDS::DCPS::Invalid_Subscription();
   }
@@ -1832,6 +1863,10 @@ TAO_DDS_DCPSInfo_i::update_subscription_qos(
 
   DCPS_IR_Subscription* sub;
 
+  if (OpenDDS::DCPS::DCPS_debug_level > 3) {
+    ACE_DEBUG((LM_INFO, "(%P|%t) updating QOS for subscription 3\n"));
+  }
+
   if (partPtr->find_subscription_reference(drId, sub) != 0 || sub == 0) {
     throw OpenDDS::DCPS::Invalid_Subscription();
   }
@@ -1856,6 +1891,10 @@ TAO_DDS_DCPSInfo_i::update_subscription_params(
   DCPS_IR_Participant* partPtr = domain->second->participant(participantId);
   if (0 == partPtr) {
     throw OpenDDS::DCPS::Invalid_Participant();
+  }
+
+  if (OpenDDS::DCPS::DCPS_debug_level > 3) {
+    ACE_DEBUG((LM_INFO, "(%P|%t) updating subscription params\n"));
   }
 
   DCPS_IR_Subscription* sub;
@@ -2001,7 +2040,7 @@ TAO_DDS_DCPSInfo_i::domain(DDS::DomainId_t domain)
 
     if (TheServiceParticipant->get_BIT()) {
 #if !defined (DDS_HAS_MINIMUM_BIT)
-      bit_status = domainPtr->init_built_in_topics(this->federation_ != 0);
+      bit_status = domainPtr->init_built_in_topics(this->federation_.overridden());
 #endif // !defined (DDS_HAS_MINIMUM_BIT)
     }
 
@@ -2111,7 +2150,7 @@ TAO_DDS_DCPSInfo_i::receive_image(const Update::UImage& image)
        iter != image.participants.end(); iter++) {
     const Update::UParticipant* part = *iter;
     OpenDDS::DCPS::RepoIdConverter converter(part->participantId);
-    if (converter.federationId() == this->federation_) {
+    if (converter.federationId() == this->federation_.id()) {
       participantIdGenerator_.last(converter.participantId());
     }
   }
@@ -2175,6 +2214,7 @@ TAO_DDS_DCPSInfo_i::receive_image(const Update::UImage& image)
        iter != image.actors.end(); iter++) {
     const Update::URActor* sub = *iter;
 
+    // no reason to associate, there are no publishers yet to associate with
     if (!this->add_subscription(sub->domainId, sub->participantId
                                 , sub->topicId, sub->actorId
                                 , sub->callback.c_str(), sub->drdwQos
@@ -2206,11 +2246,14 @@ TAO_DDS_DCPSInfo_i::receive_image(const Update::UImage& image)
        iter != image.wActors.end(); iter++) {
     const Update::UWActor* pub = *iter;
 
+    // try to associate with any persisted subscriptions to track any expected
+    // existing associations
     if (!this->add_publication(pub->domainId, pub->participantId
                                , pub->topicId, pub->actorId
                                , pub->callback.c_str() , pub->drdwQos
                                , pub->transportInterfaceInfo
-                               , pub->pubsubQos)) {
+                               , pub->pubsubQos
+                               , true)) {
       OpenDDS::DCPS::RepoIdConverter pub_converter(pub->actorId);
       OpenDDS::DCPS::RepoIdConverter part_converter(pub->participantId);
       ACE_ERROR((LM_ERROR,

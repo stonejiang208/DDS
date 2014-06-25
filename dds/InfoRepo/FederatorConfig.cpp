@@ -14,6 +14,9 @@
 #include "ace/Configuration_Import_Export.h"
 #include "ace/Log_Priority.h"
 #include "ace/Log_Msg.h"
+#include "ace/OS_NS_stdlib.h"
+#include "ace/OS_NS_strings.h"
+#include "ace/OS_NS_sys_time.h"
 
 #include <algorithm>
 
@@ -83,26 +86,90 @@ ArgCopier::operator()(ACE_TCHAR* arg)
   switch (this->action_) {
   case FILENAME:
     // Store the configuration file name.
-    this->config_->configFile() = arg;
+    this->config_->configFile(arg);
     break;
 
   case IDVALUE:
     // Capture the federation Id.
-    this->config_->federationId() = ACE_OS::atoi(arg);
+    this->config_->federationId().id(ACE_OS::atoi(arg));
     break;
 
   case IORVALUE:
     // Capture the IOR to federate with.
-    this->config_->federateIor() = arg;
+    this->config_->federateIor(arg);
     break;
 
   case COPY:
     // Copy other args verbatim.
-    this->config_->argv()[ this->config_->argc()++] = arg;
+    this->config_->addArg(arg);
     break;
   }
 
   this->action_ = COPY;
+}
+
+int random_id()
+{
+  ACE_UINT64 msec;
+  ACE_OS::gettimeofday().msec(msec);
+  ACE_OS::srand((unsigned int)msec);
+  const int r = ACE_OS::rand();
+  return r;
+}
+
+void hash_endpoint(::CORBA::Long& hash, const char* const endpoint, const size_t len)
+{
+  std::string toprint(endpoint, len);
+  if (len > 0)
+  {
+    for (size_t i = 0; i < len; i++)
+    {
+      hash = 31 * hash + endpoint[i];
+    }
+  }
+}
+
+#if defined (ACE_USES_WCHAR)
+void hash_endpoint(::CORBA::Long& hash, const wchar_t* const endpoint, const size_t len)
+{
+  // treat the wchar string as a double length string
+  hash_endpoint(hash, reinterpret_cast<const char*>(endpoint), len * 2);
+}
+#endif
+
+void hash_endpoints(::CORBA::Long& hash, const ACE_TCHAR* const endpoints_str)
+{
+  const ACE_TCHAR* delim = ACE_TEXT(";");
+  const size_t len = ACE_OS::strlen(endpoints_str);
+  const ACE_TCHAR* curr = endpoints_str;
+  while (curr < endpoints_str + len) {
+    const ACE_TCHAR* next = ACE_OS::strstr(curr, delim);
+    if (next == 0)
+      next = endpoints_str + len;
+    hash_endpoint(hash, curr, (next - curr));
+    curr = next + 1;
+  }
+}
+
+::CORBA::Long hash_endpoints(int argc, ACE_TCHAR** argv)
+{
+  ::CORBA::Long hash = 0;
+  bool found = false;
+  for (int i = 0; i < argc - 1; ++i) {
+    if (ACE_OS::strncasecmp(argv[i], ACE_TEXT("-ORB"), ACE_OS::strlen(ACE_TEXT("-ORB"))) == 0 &&
+        (ACE_OS::strcasecmp(ACE_TEXT("-ORBEndpoint"), argv[i]) == 0 ||
+         ACE_OS::strcasecmp(ACE_TEXT("-ORBListenEndpoints"), argv[i]) == 0 ||
+         ACE_OS::strcasecmp(ACE_TEXT("-ORBLaneEndpoint"), argv[i]) == 0 ||
+         ACE_OS::strcasecmp(ACE_TEXT("-ORBLaneListenEndpoints"), argv[i]) == 0)) {
+      const ACE_TCHAR* enpoints = argv[++i];
+      hash_endpoints(hash, enpoints);
+      found = true;
+    }
+  }
+  if (!found) {
+    hash = random_id();
+  }
+  return hash;
 }
 
 } // End of anonymous namespace
@@ -121,7 +188,7 @@ Config::FEDERATE_WITH_OPTION(ACE_TEXT("-FederateWith"));
 
 Config::Config(int argc, ACE_TCHAR** argv)
   : argc_(0),
-    federationId_(NIL_REPOSITORY),
+    federationId_(hash_endpoints(argc, argv)),
     federationDomain_(DEFAULT_FEDERATIONDOMAIN),
     federationPort_(-1)
 {
@@ -228,20 +295,20 @@ Config::processFile()
   RepoKey idValue = ACE_OS::atoi(federationIdString.c_str());
 
   // Allow the command line to override the file value.
-  if (this->federationId_ != NIL_REPOSITORY) {
+  if (this->federationId_.overridden()) {
     ACE_DEBUG((LM_DEBUG,
                ACE_TEXT("(%P|%t)   FederationId == %d from file ")
                ACE_TEXT("overridden by value %d from command line.\n"),
                idValue,
-               this->federationId_));
+               this->federationId_.id()));
 
   } else {
-    this->federationId_ = idValue;
+    this->federationId_.id(idValue);
 
     if (::OpenDDS::DCPS::DCPS_debug_level > 0) {
       ACE_DEBUG((LM_DEBUG,
                  ACE_TEXT("(%P|%t)   FederationId == %d\n"),
-                 this->federationId_));
+                 this->federationId_.id()));
     }
   }
 

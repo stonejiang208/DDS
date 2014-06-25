@@ -50,7 +50,8 @@ ACE_TMAIN(int argc, ACE_TCHAR** argv)
 {
   try
   {
-    TheParticipantFactoryWithArgs(argc, argv);
+    DDS::DomainParticipantFactory_var dpf =
+      TheParticipantFactoryWithArgs(argc, argv);
     parse_args(argc, argv);
 
     ACE_DEBUG((LM_INFO, ACE_TEXT("(%P|%t) -> PUBLISHER STARTED\n")));
@@ -62,6 +63,7 @@ ACE_TMAIN(int argc, ACE_TCHAR** argv)
     task.wait();
 
     // Clean-up!
+    ACE_DEBUG((LM_INFO, ACE_TEXT("(%P|%t)    <- PUBLISHER SHUTDOWN\n")));
     TheServiceParticipant->shutdown();
   }
   catch (const CORBA::Exception& e)

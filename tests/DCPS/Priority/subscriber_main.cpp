@@ -14,7 +14,8 @@ int ACE_TMAIN(int argc, ACE_TCHAR *argv[])
 
   try {
     // Initialize DDS.
-    TheParticipantFactoryWithArgs( argc, argv);
+    DDS::DomainParticipantFactory_var dpf =
+      TheParticipantFactoryWithArgs( argc, argv);
 
     // Initialize the test.
     const Test::Options options( argc, argv);
@@ -38,13 +39,14 @@ int ACE_TMAIN(int argc, ACE_TCHAR *argv[])
 
     ACE_DEBUG((LM_DEBUG,
       ACE_TEXT("(%P|%t) subscriber_main() - ")
-      ACE_TEXT("test over after receiving %d of expected %d samples.\n"),
-      subscriber.count(),
-      options.count()
+      ACE_TEXT("test over after receiving %d samples.\n"),
+      subscriber.count()
     ));
 
-    // Test passes if expected and observed are the same.
-    if( subscriber.count() == options.count()) {
+    // Test passes if all the low priority samples are recieved in order
+    // and if the high priority sample is received before the low priority
+    // sample that was sent immediately before it
+    if( subscriber.passed()) {
       result = 0;
     }
 

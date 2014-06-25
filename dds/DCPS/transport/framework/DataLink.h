@@ -14,6 +14,7 @@
 #include "dds/DCPS/RcObject_T.h"
 #include "ReceiveListenerSetMap.h"
 #include "RepoIdSetMap.h"
+#include "SendResponseListener.h"
 #include "TransportDefs.h"
 #include "TransportImpl_rch.h"
 #include "TransportSendStrategy.h"
@@ -133,7 +134,7 @@ public:
   /// configuration is true or just simply delegate to the send strategy.
   void send_start();
   void send(TransportQueueElement* element);
-  void send_stop();
+  void send_stop(RepoId repoId);
 
   // ciju: Called by LinkSet with locks held
   /// This method is essentially an "undo_send()" method.  It's goal
@@ -301,7 +302,7 @@ protected:
   /// delegate to the send strategy.
   void send_start_i();
   virtual void send_i(TransportQueueElement* element, bool relink = true);
-  void send_stop_i();
+  void send_stop_i(RepoId repoId);
 
   /// For a given local RepoId (publication or subscription), return the list
   /// of remote peer RepoIds (subscriptions or publications) that this link
@@ -444,6 +445,9 @@ protected:
   bool is_loopback_;
   /// Is pub or sub ?
   bool is_active_;
+
+  /// Listener for TransportSendControlElements created in send_control
+  SendResponseListener send_response_listener_;
 };
 
 } // namespace DCPS

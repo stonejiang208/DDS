@@ -48,7 +48,7 @@ int ACE_TMAIN(int argc, ACE_TCHAR* argv[])
     CORBA::String_var type_name = ts->get_type_name();
 
     DDS::Topic_var topic =
-      participant->create_topic("Movie Discussion List",
+      participant->create_topic("Movie Discussion List TLT",
                                 type_name,
                                 TOPIC_QOS_DEFAULT,
                                 DDS::TopicListener::_nil(),
@@ -109,13 +109,16 @@ int ACE_TMAIN(int argc, ACE_TCHAR* argv[])
       }
 
       DDS::ReturnCode_t ret = message_dw->write(message, handle);
-      ++message.count;
 
       if (ret != DDS::RETCODE_OK) {
         ACE_ERROR((LM_ERROR,
           ACE_TEXT("(%P|%t) ERROR: %dth write() returned %d.\n"),
           message.count, ret));
+      } else {
+        std::cout << "wrote message " << message.count << std::endl;
       }
+
+      ++message.count;
 
       ACE_OS::sleep(writer_delay);
     }

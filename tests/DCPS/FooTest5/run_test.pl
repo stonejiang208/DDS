@@ -73,6 +73,11 @@ elsif ($ARGV[$arg_idx] eq 'mwmr') {
   $num_writers = 2;
   $num_readers = 2;
 }
+elsif ($ARGV[$arg_idx] eq 'mr') {
+  $num_samples_per_instance = 50;
+  $num_writers = 1;
+  $num_readers = 2;
+}
 elsif ($ARGV[$arg_idx] eq 'mwmr_long_seq') {
   $sequence_length = 256;
   $num_samples_per_instance = 50;
@@ -144,6 +149,13 @@ print $Subscriber->CommandLine(), "\n";
 my $Publisher = PerlDDS::create_process('publisher', $pub_parameters);
 print $Publisher->CommandLine(), "\n";
 
+my $orig_ACE_LOG_TIMESTAMP = $ENV{ACE_LOG_TIMESTAMP};
+$ENV{ACE_LOG_TIMESTAMP} = "TIME";
+sub cleanup
+{
+  $ENV{ACE_LOG_TIMESTAMP} = $orig_ACE_LOG_TIMESTAMP;
+}
+
 $DCPSREPO->Spawn();
 
 if (PerlACE::waitforfile_timed($dcpsrepo_ior, 30) == -1) {
@@ -192,4 +204,5 @@ else {
   print STDERR "test FAILED.\n";
 }
 
+cleanup();
 exit $status;

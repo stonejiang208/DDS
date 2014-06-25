@@ -12,6 +12,7 @@
 #include "dds/DCPS/dcps_export.h"
 #include "dds/DCPS/RcObject_T.h"
 #include "DataLink_rch.h"
+#include "SendResponseListener.h"
 #include "TransportDefs.h"
 #include "TransportSendControlElement.h"
 
@@ -65,7 +66,7 @@ public:
 
   /// This will inform each DataLink in the set about the send_stop()
   /// event.  It will then clear the send_links_ set.
-  void send_stop();
+  void send_stop(RepoId repoId);
 
   DataLinkSet* select_links(const RepoId* remoteIds,
                             const CORBA::ULong num_targets);
@@ -94,6 +95,9 @@ private:
   /// This lock will protect critical sections of code that play a
   /// role in the sending of data.
   LockType lock_;
+
+  /// Listener for TransportSendControlElements created in send_response
+  SendResponseListener send_response_listener_;
 };
 
 } // namespace DCPS

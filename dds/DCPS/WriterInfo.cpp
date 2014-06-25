@@ -56,6 +56,7 @@ WriterInfoListener::writer_removed(WriterInfo& )
 WriterInfo::WriterInfo()
   : last_liveliness_activity_time_(ACE_OS::gettimeofday()),
   seen_data_(false),
+  awaiting_historic_samples_(false),
   state_(NOT_SET),
   reader_(0),
   writer_id_(GUID_UNKNOWN),
@@ -68,9 +69,12 @@ WriterInfo::WriterInfo()
 
 WriterInfo::WriterInfo(WriterInfoListener*         reader,
                        const PublicationId&        writer_id,
-                       const ::DDS::DataWriterQos& writer_qos)
+                       const ::DDS::DataWriterQos& writer_qos,
+                       const ::DDS::DataReaderQos& reader_qos)
   : last_liveliness_activity_time_(ACE_OS::gettimeofday()),
   seen_data_(false),
+  // Only check reader qos, because durable connection depends on it
+  awaiting_historic_samples_(reader_qos.durability.kind > DDS::VOLATILE_DURABILITY_QOS),
   state_(NOT_SET),
   reader_(reader),
   writer_id_(writer_id),
@@ -164,7 +168,13 @@ WriterInfo::check_activity(const ACE_Time_Value& now)
 void
 WriterInfo::removed()
 {
+  //### Debug statements to track where test is failing
+  ACE_DEBUG((LM_DEBUG, "(%P|%t) ###WriterInfo::removed --> enter\n"));
+  //### Debug statements to track where test is failing
+  ACE_DEBUG((LM_DEBUG, "(%P|%t) ###WriterInfo::removed --> call writer_removed\n"));
   reader_->writer_removed(*this);
+  //### Debug statements to track where test is failing
+  ACE_DEBUG((LM_DEBUG, "(%P|%t) ###WriterInfo::removed --> exit\n"));
 }
 
 void

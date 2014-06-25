@@ -213,8 +213,11 @@ Service_Participant::timer() const
 void
 Service_Participant::shutdown()
 {
+   //### Debug statements to track where connection is failing
+   ACE_DEBUG((LM_DEBUG, "(%P|%t|%T) ###Service_Participant::shutdown --> enter\n"));
   try {
-
+     //### Debug statements to track where connection is failing
+     ACE_DEBUG((LM_DEBUG, "(%P|%t|%T) ###Service_Participant::shutdown --> about to call TransportRegistry::instance()->release()\n"));
     TransportRegistry::instance()->release();
 
     ACE_GUARD(TAO_SYNCH_MUTEX, guard, this->factory_lock_);
@@ -239,7 +242,8 @@ Service_Participant::shutdown()
       delete i->second;
     }
     discovery_types_.clear();
-
+    //### Debug statements to track where connection is failing
+    ACE_DEBUG((LM_DEBUG, "(%P|%t|%T) ###Service_Participant::shutdown --> exit (end of try block)\n"));
   } catch (const CORBA::Exception& ex) {
     ex._tao_print_exception("ERROR: Service_Participant::shutdown");
   }
@@ -663,7 +667,6 @@ Service_Participant::initializeScheduling()
     int ace_scheduler = ACE_SCHED_OTHER;
     this->scheduler_  = THR_SCHED_DEFAULT;
 
-#ifdef ACE_WIN32
     if (this->schedulerString_ == ACE_TEXT("SCHED_RR")) {
       this->scheduler_ = THR_SCHED_RR;
       ace_scheduler    = ACE_SCHED_RR;
@@ -686,6 +689,7 @@ Service_Participant::initializeScheduling()
     //
     // Attempt to set the scheduling policy.
     //
+#ifdef ACE_WIN32
     ACE_DEBUG((LM_NOTICE,
                ACE_TEXT("(%P|%t) NOTICE: Service_Participant::initializeScheduling() - ")
                ACE_TEXT("scheduling is not implemented on Win32.\n")));

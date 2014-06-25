@@ -15,6 +15,7 @@
 #include "dds/DCPS/DataWriterCallbacks.h"
 #include "dds/DCPS/transport/framework/TransportSendListener.h"
 #include "dds/DCPS/transport/framework/TransportClient.h"
+#include "dds/DCPS/MessageTracker.h"
 #include "WriteDataContainer.h"
 #include "Definitions.h"
 #include "DataSampleList.h"
@@ -414,8 +415,8 @@ public:
   /// Statistics counter.
   int         data_dropped_count_;
   int         data_delivered_count_;
-  int         control_dropped_count_;
-  int         control_delivered_count_;
+
+  MessageTracker controlTracker;
 
   /**
    * This method create a header message block and chain with
@@ -457,6 +458,12 @@ public:
                   const DDS::StringSeq& expression_params) const;
 #endif
 
+  /**
+   * Wait until pending control elements have either been delivered
+   * or dropped.
+   */
+  void wait_control_pending();
+
 protected:
 
   // type specific DataWriter's part of enable.
@@ -484,6 +491,9 @@ protected:
   /// creates this datawriter.
   DomainParticipantImpl*          participant_servant_;
 
+  //This lock should be used to protect access to reader_info_
+  ACE_Thread_Mutex reader_info_lock_;
+
   struct ReaderInfo {
 #ifndef OPENDDS_NO_CONTENT_FILTERED_TOPIC
     DomainParticipantImpl* participant_;
@@ -506,6 +516,15 @@ protected:
     AckToken& token_;
     explicit AckCustomization(AckToken& at) : token_(at) {}
   };
+
+  virtual SendControlStatus send_control(const DataSampleHeader& header,
+                                         ACE_Message_Block* msg,
+                                         void* extra = 0);
+
+  /**
+   * Answer if transport of all control messages is pending.
+   */
+  bool pending_control();
 
 private:
 
@@ -658,7 +677,11 @@ private:
 
   // Do we need to set the sequence repair header bit?
   //   must call prior to incrementing sequence number
-  bool need_sequence_repair() const;
+  bool need_sequence_repair();
+  bool need_sequence_repair_i() const;
+
+  DDS::ReturnCode_t send_end_historic_samples();
+
 };
 
 } // namespace DCPS

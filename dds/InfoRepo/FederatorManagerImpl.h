@@ -98,8 +98,8 @@ public:
   void localRepo(::OpenDDS::DCPS::DCPSInfo_ptr repo);
 
   /// Accessors for the federation Id value.
-  RepoKey& id();
-  RepoKey  id() const;
+//  void id(RepoKey val);
+  const TAO_DDS_DCPSFederationId&  id() const;
 
   /// Accessors for the ORB.
   CORBA::ORB_ptr orb();

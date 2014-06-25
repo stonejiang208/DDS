@@ -13,9 +13,31 @@ import Messenger.*;
 
 public class TestPublisher {
 
-    private static final int N_MSGS = 10;
+    private static final int N_MSGS = 40;
+
+    public static boolean checkReliable(String[] args) {
+      for (int i = 0; i < args.length; ++i) {
+        if (args[i].equals("-r")) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    public static boolean checkWaitForAcks(String[] args) {
+      for (int i = 0; i < args.length; ++i) {
+        if (args[i].equals("-w")) {
+          return true;
+        }
+      }
+      return false;
+    }
 
     public static void main(String[] args) {
+
+        System.out.println("Start Publisher");
+        boolean reliable = checkReliable(args);
+        boolean waitForAcks = checkWaitForAcks(args);
 
         DomainParticipantFactory dpf =
             TheParticipantFactory.WithArgs(new StringSeqHolder(args));
@@ -55,14 +77,53 @@ public class TestPublisher {
 
         // Use the default transport configuration (do nothing)
 
+        DataWriterQos dw_qos = new DataWriterQos();
+        dw_qos.durability = new DurabilityQosPolicy();
+        dw_qos.durability.kind = DurabilityQosPolicyKind.from_int(0);
+        dw_qos.durability_service = new DurabilityServiceQosPolicy();
+        dw_qos.durability_service.history_kind = HistoryQosPolicyKind.from_int(0);
+        dw_qos.durability_service.service_cleanup_delay = new Duration_t();
+        dw_qos.deadline = new DeadlineQosPolicy();
+        dw_qos.deadline.period = new Duration_t();
+        dw_qos.latency_budget = new LatencyBudgetQosPolicy();
+        dw_qos.latency_budget.duration = new Duration_t();
+        dw_qos.liveliness = new LivelinessQosPolicy();
+        dw_qos.liveliness.kind = LivelinessQosPolicyKind.from_int(0);
+        dw_qos.liveliness.lease_duration = new Duration_t();
+        dw_qos.reliability = new ReliabilityQosPolicy();
+        dw_qos.reliability.kind = ReliabilityQosPolicyKind.from_int(0);
+        dw_qos.reliability.max_blocking_time = new Duration_t();
+        dw_qos.destination_order = new DestinationOrderQosPolicy();
+        dw_qos.destination_order.kind = DestinationOrderQosPolicyKind.from_int(0);
+        dw_qos.history = new HistoryQosPolicy();
+        dw_qos.history.kind = HistoryQosPolicyKind.from_int(0);
+        dw_qos.resource_limits = new ResourceLimitsQosPolicy();
+        dw_qos.transport_priority = new TransportPriorityQosPolicy();
+        dw_qos.lifespan = new LifespanQosPolicy();
+        dw_qos.lifespan.duration = new Duration_t();
+        dw_qos.user_data = new UserDataQosPolicy();
+        dw_qos.user_data.value = new byte[0];
+        dw_qos.ownership = new OwnershipQosPolicy();
+        dw_qos.ownership.kind = OwnershipQosPolicyKind.from_int(0);
+        dw_qos.ownership_strength = new OwnershipStrengthQosPolicy();
+        dw_qos.writer_data_lifecycle = new WriterDataLifecycleQosPolicy();
+
+        DataWriterQosHolder qosh = new DataWriterQosHolder(dw_qos);
+        pub.get_default_datawriter_qos(qosh);
+        qosh.value.history.kind = HistoryQosPolicyKind.KEEP_ALL_HISTORY_QOS;
+        if (reliable) {
+          qosh.value.reliability.kind =
+            ReliabilityQosPolicyKind.RELIABLE_RELIABILITY_QOS;
+        }
         DataWriter dw = pub.create_datawriter(top,
-                                              DATAWRITER_QOS_DEFAULT.get(),
+                                              qosh.value,
                                               null,
                                               DEFAULT_STATUS_MASK.value);
         if (dw == null) {
             System.err.println("ERROR: DataWriter creation failed");
             return;
         }
+        System.out.println("Publisher Created DataWriter");
 
         StatusCondition sc = dw.get_statuscondition();
         sc.set_enabled_statuses(PUBLICATION_MATCHED_STATUS.value);
@@ -82,6 +143,7 @@ public class TestPublisher {
             }
 
             if (matched.value.current_count >= 1) {
+                System.out.println("Publisher Matched");
                 break;
             }
 
@@ -102,17 +164,40 @@ public class TestPublisher {
         msg.subject = "Review";
         msg.text = "Worst. Movie. Ever.";
         msg.count = 0;
+        int ret = RETCODE_TIMEOUT.value;
         for (; msg.count < N_MSGS; ++msg.count) {
-            int ret = mdw.write(msg, handle);
+            while ((ret = mdw.write(msg, handle)) == RETCODE_TIMEOUT.value) {
+            }
             if (ret != RETCODE_OK.value) {
                 System.err.println("ERROR " + msg.count +
                                    " write() returned " + ret);
+            }
+            try {
+              Thread.sleep(100);
+            } catch(InterruptedException ie) {
+            }
+        }
+
+        if (waitForAcks) {
+          System.out.println("Publisher waiting for acks");
+
+          // Wait for acknowledgements
+          Duration_t forever = new Duration_t(DURATION_INFINITE_SEC.value,
+                                              DURATION_INFINITE_NSEC.value);
+          dw.wait_for_acknowledgments(forever);
+        } else {
+          try {
+            Thread.sleep(1000);
+          } catch(InterruptedException ie) {
           }
         }
+        System.out.println("Stop Publisher");
 
         // Clean up
         dp.delete_contained_entities();
         dpf.delete_participant(dp);
         TheServiceParticipant.shutdown();
+
+        System.out.println("Publisher exiting");
     }
 }
